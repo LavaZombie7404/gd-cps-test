@@ -24,7 +24,13 @@ Un singur fișier, zero dependențe, zero build.
     sub 70% = unul rămâne în urmă.
   - **Alternate** → *alternanță*: ce procent din apăsări chiar au schimbat butonul.
     Repetările pe același buton îți strică rata.
-- **Record salvat local** pentru fiecare durată **și** fiecare tehnică, separat
+- **Medii de sesiune, ca la cubing** — o singură rulare nu spune nimic:
+  **Single**, **Mo3**, **Ao5**, **Ao12** și media pe tot istoricul, fiecare cu „acum" și „record".
+  Ao5 și Ao12 taie cea mai bună și cea mai slabă rulare înainte să medieze, iar cele două
+  tăiate se scriu în paranteze, ca în notația obișnuită: `(11.20) 10.40 9.80 10.10 (9.10)`.
+  Aici mare = bine, invers față de timpi, dar regula de trimming e simetrică deci se aplică la fel.
+- **Istoric separat** pentru fiecare combinație durată × tehnică — recordul de la
+  `10s / alternate` nu se amestecă cu cel de la `5s / jitter`
 
 ## Cum îl folosești
 

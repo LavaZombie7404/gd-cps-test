@@ -78,6 +78,18 @@
   .readout{font-size:12px; color:var(--ink-2); min-height:1.2em}
   canvas{display:block; width:100%; height:112px}
 
+  .avgs{width:100%; border-collapse:collapse}
+  .avgs td{padding:6px 0; border-bottom:1px solid var(--line); font-size:13.5px}
+  .avgs tr:last-child td{border-bottom:0}
+  .avgs .hd td{padding-top:0; font-size:11px; letter-spacing:.06em; text-transform:uppercase; color:var(--ink-3)}
+  .avgs .k{color:var(--ink-2)}
+  .avgs .v,.avgs .b{text-align:right; width:86px; font-family:ui-monospace,Consolas,monospace; font-variant-numeric:tabular-nums}
+  .avgs .v{color:var(--ink); font-weight:600}
+  .avgs .b{color:var(--ink-3)}
+  .avgs .hd .v,.avgs .hd .b{font-family:inherit; font-weight:400}
+  .recent{margin-top:11px; color:var(--ink-3); font-size:12.5px}
+  .chip-clear{margin-top:12px; font-size:12px; padding:4px 10px}
+
   .rows{display:flex; flex-direction:column; gap:9px}
   .row{display:grid; grid-template-columns:72px 1fr 118px; align-items:center; gap:12px}
   .row-k{font-size:13px; color:var(--ink-2)}
@@ -143,6 +155,16 @@
   </div>
 
   <div class="card">
+    <div class="card-head">
+      <span class="card-title">Sesiune</span>
+      <span class="readout" id="ses-meta"></span>
+    </div>
+    <table class="avgs"><tbody id="avg-body"></tbody></table>
+    <div class="recent num" id="recent"></div>
+    <button class="chip chip-clear" type="button" id="clear-ses">șterge istoricul</button>
+  </div>
+
+  <div class="card">
     <div class="card-head"><span class="card-title">Pe input</span></div>
     <div class="rows" id="breakdown"></div>
   </div>
@@ -189,6 +211,7 @@
     pad:$('pad'), hero:$('hero'), msg:$('msg'), progress:$('progress'),
     durations:$('durations'), inputs:$('inputs'), modes:$('modes'), breakdown:$('breakdown'),
     modeHint:$('mode-hint'), readout:$('readout'), chart:$('chart'),
+    sesMeta:$('ses-meta'), avgBody:$('avg-body'), recent:$('recent'), clearSes:$('clear-ses'),
     total:$('s-total'), peak:$('s-peak'), avg:$('s-avg'), min:$('s-min'), jit:$('s-jit'),
     tileTech:$('tile-tech'), techK:$('s-tech-k'), tech:$('s-tech'),
   };
@@ -219,13 +242,22 @@
     if (code.startsWith('Numpad')) return 'Num' + code.slice(6);
     return code;
   }
-  const bests  = saved.bests && typeof saved.bests === 'object' ? saved.bests : {};
+  // Istoric de rulări per (tehnică × durată) — mediile din cubing au nevoie de
+  // șirul întreg, nu doar de recordul singular.
+  let hist = saved.hist && typeof saved.hist === 'object' ? saved.hist : {};
+  {
+    const old = saved.bests && typeof saved.bests === 'object' ? saved.bests : {};
+    for (const k in old) {                       // recordurile vechi devin prima rulare
+      if (!Array.isArray(hist[k]) || !hist[k].length) hist[k] = [old[k]];
+    }
+  }
+  const MAX_RUNS = 200;
 
   const save = () => {
     try {
       localStorage.setItem(LS, JSON.stringify({
         duration: duration === Infinity ? null : duration,
-        enabled: [...enabled], mode, customs, bests,
+        enabled: [...enabled], mode, customs, hist,
       }));
     } catch { /* private mode — nu-i nimic */ }
   };
@@ -241,6 +273,38 @@
   const bestKey = () => mode + ':' + durKey();   // recordurile nu se amestecă între tehnici
   const durText = d => d === Infinity ? '∞' : d + 's';
   const curMode = () => MODES.find(m => m.id === mode);
+  const runs    = () => hist[bestKey()] || [];
+
+  // Mediile din cubing: se taie cea mai bună și cea mai slabă, se mediază restul.
+  // Aici mare = bine, invers față de timpi, dar regula de trimming e simetrică.
+  const AVGS = [
+    { k:'Single', n:1,  trim:false, note:'o singură rulare' },
+    { k:'Mo3',    n:3,  trim:false, note:'media ultimelor 3, netăiată' },
+    { k:'Ao5',    n:5,  trim:true,  note:'ultimele 5 fără cea mai bună și cea mai slabă' },
+    { k:'Ao12',   n:12, trim:true,  note:'ultimele 12 fără cea mai bună și cea mai slabă' },
+    { k:'Mean',   n:0,  trim:false, note:'toate rulările din istoric' },
+  ];
+
+  function windowVal(w, trim) {
+    let v = w.slice();
+    if (trim && v.length > 2) { v.sort((a, b) => a - b); v = v.slice(1, -1); }
+    return v.reduce((a, b) => a + b, 0) / v.length;
+  }
+  function avgNow(arr, n, trim) {
+    if (!arr.length) return null;
+    if (n === 0) return windowVal(arr, false);
+    if (arr.length < n) return null;
+    return windowVal(arr.slice(-n), trim);
+  }
+  function avgBest(arr, n, trim) {
+    if (n === 0 || arr.length < n) return null;
+    let b = null;
+    for (let i = 0; i + n <= arr.length; i++) {
+      const v = windowVal(arr.slice(i, i + n), trim);
+      if (b == null || v > b) b = v;
+    }
+    return b;
+  }
 
   function reset(keepDone) {
     phase = 'idle'; t0 = 0; elapsed = 0; stamps = []; peakCps = 0;
@@ -272,7 +336,10 @@
     lockUntil = performance.now() + 700;
     const cps = stamps.length / duration;
     const key = bestKey();
-    if (!bests[key] || cps > bests[key]) { bests[key] = cps; save(); }
+    const arr = hist[key] || (hist[key] = []);
+    arr.push(cps);
+    if (arr.length > MAX_RUNS) arr.shift();
+    save();
     render();
   }
 
@@ -471,6 +538,48 @@
   }
 
   // ---- render -----------------------------------------------------------
+  function recentText(arr) {
+    if (!arr.length) return '';
+    if (arr.length < 5) return 'rulări: ' + arr.map(v => v.toFixed(2)).join('  ');
+    // convenția din cubing: cele două tăiate se scriu în paranteze
+    const w = arr.slice(-5), s = w.slice().sort((a, b) => a - b);
+    let cutLo = false, cutHi = false;
+    return 'ultimele 5: ' + w.map(v => {
+      if (!cutLo && v === s[0]) { cutLo = true; return '(' + v.toFixed(2) + ')'; }
+      if (!cutHi && v === s[4]) { cutHi = true; return '(' + v.toFixed(2) + ')'; }
+      return v.toFixed(2);
+    }).join('  ');
+  }
+
+  function renderSession() {
+    const arr = runs();
+    const where = durText(duration) + ' · ' + curMode().label;
+    el.sesMeta.textContent = arr.length
+      ? arr.length + (arr.length === 1 ? ' rulare · ' : ' rulări · ') + where
+      : 'nicio rulare · ' + where;
+
+    let html = '<tr class="hd"><td class="k"></td><td class="v">Acum</td><td class="b">Record</td></tr>';
+    for (const a of AVGS) {
+      const now = avgNow(arr, a.n, a.trim);
+      const bst = avgBest(arr, a.n, a.trim);
+      html += '<tr title="' + a.note + '">' +
+        '<td class="k">' + a.k + '</td>' +
+        '<td class="v">' + (now == null ? '—' : now.toFixed(2)) + '</td>' +
+        '<td class="b">' + (bst == null ? '—' : bst.toFixed(2)) + '</td></tr>';
+    }
+    el.avgBody.innerHTML = html;
+    el.recent.textContent = recentText(arr);
+    el.clearSes.style.display = arr.length ? '' : 'none';
+  }
+
+  el.clearSes.onclick = () => {
+    const n = runs().length;
+    if (!n) return;
+    if (!confirm('Ștergi cele ' + n + ' rulări de la ' + durText(duration) + ' / ' + curMode().label + '?')) return;
+    delete hist[bestKey()];
+    save(); render(); el.clearSes.blur();
+  };
+
   function render() {
     el.pad.dataset.phase = phase;
 
@@ -481,7 +590,7 @@
 
     el.hero.textContent = live.toFixed(2);
 
-    const best = bests[bestKey()];
+    const best = avgBest(runs(), 1, false);
     const bestTxt = best ? ' · record <b>' + best.toFixed(2) + '</b> cps' : '';
     if (phase === 'idle') {
       el.msg.innerHTML = 'Apasă <b>' + [...enabled].map(findInput).filter(Boolean).map(i => i.label).join(' / ') +
@@ -558,6 +667,8 @@
       el.breakdown.appendChild(row);
     }
 
+    // istoricul nu se schimbă în timpul unei rulări — n-are rost rescris la 60fps
+    if (phase !== 'running') renderSession();
     drawChart();
   }
 
