@@ -34,6 +34,8 @@
     background:var(--bg); color:var(--ink);
     font:15px/1.5 ui-sans-serif,system-ui,"Segoe UI",Roboto,sans-serif;
     display:flex; justify-content:center; padding:28px 18px 48px;
+    overscroll-behavior-y:contain;      /* fără pull-to-refresh în timpul spam-ului */
+    -webkit-text-size-adjust:100%;
   }
   .wrap{width:100%; max-width:840px}
   .num{font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace; font-variant-numeric:tabular-nums}
@@ -58,6 +60,8 @@
   .chip:hover{border-color:var(--accent); color:var(--ink)}
   .chip[aria-pressed="true"]{background:var(--accent-soft); border-color:var(--accent); color:var(--ink)}
   .chip .num{font-size:13px}
+  .chip:disabled{opacity:.38; cursor:not-allowed}
+  .chip:disabled:hover{border-color:var(--line); color:var(--ink-2)}
   .chip-add{border-style:dashed; color:var(--ink-3)}
   .chip-x{margin-left:7px; color:var(--ink-3); font-size:15px; line-height:1}
   .chip-x:hover{color:var(--ink)}
@@ -67,8 +71,14 @@
     background:var(--surface); border:1px solid var(--line); border-radius:var(--radius);
     min-height:236px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:2px;
     cursor:pointer; user-select:none; -webkit-user-select:none; -webkit-tap-highlight-color:transparent;
+    touch-action:none; -webkit-touch-callout:none;   /* fără zoom din dublu-tap, fără meniu la ținut apăsat */
     transition:border-color .12s;
   }
+  .pad.zones::after{
+    content:''; position:absolute; top:14%; bottom:14%; left:50%; width:1px;
+    background:var(--line); pointer-events:none;
+  }
+  .actions{margin-top:8px}
   .pad[data-phase="running"]{border-color:var(--accent)}
   .hero{font-size:clamp(56px,15vw,96px); line-height:1; font-weight:650; letter-spacing:-.03em}
   .hero-unit{font-size:13px; letter-spacing:.14em; text-transform:uppercase; color:var(--ink-3); margin-top:8px}
@@ -113,7 +123,24 @@
     font-family:ui-monospace,Consolas,monospace; font-size:11.5px;
     background:var(--surface-2); border:1px solid var(--line); border-radius:5px; padding:1px 5px;
   }
-  @media (max-width:520px){ .row{grid-template-columns:52px 1fr 96px} }
+  @media (pointer:coarse){
+    .chip{padding:9px 14px; font-size:14px}      /* ținte de atins, nu de nimerit cu mouse-ul */
+    .chip-x{margin-left:9px; font-size:17px}
+  }
+  @media (max-width:560px){
+    body{padding:16px 12px 36px}
+    .controls{gap:13px}
+    .pad{min-height:min(44vh,300px)}
+    .stats{grid-template-columns:repeat(2,1fr)}
+    .card{padding:12px 13px}
+    canvas{height:96px}
+    .row{grid-template-columns:64px 1fr 104px; gap:9px}
+    .avgs .v,.avgs .b{width:74px}
+  }
+  @media (max-width:380px){
+    .row{grid-template-columns:56px 1fr 92px}
+    .row-v,.recent{font-size:12px}
+  }
 </style>
 </head>
 <body>
@@ -150,6 +177,7 @@
     <p class="pad-msg" id="msg"></p>
     <div class="progress" id="progress"></div>
   </div>
+  <div class="actions"><button class="chip" type="button" id="reset-btn">Reset</button></div>
 
   <div class="stats">
     <div class="tile"><div class="tile-k">Total</div><div class="tile-v num" id="s-total">0</div></div>
@@ -183,9 +211,7 @@
     <div class="rows" id="breakdown"></div>
   </div>
 
-  <footer>
-    <kbd>R</kbd> resetează · <kbd>Esc</kbd> oprește · click stânga contează doar în zona mare de sus.
-  </footer>
+  <footer id="foot"></footer>
 </div>
 
 <script>
@@ -200,7 +226,22 @@
     { id:'shift', label:'LShift',code:'ShiftLeft' },
     { id:'ctrl',  label:'LCtrl', code:'ControlLeft' },
   ];
-  const DEFAULT_ENABLED = ['lmb', 'w', 'space', 'up'];
+  // Pe ecran tactil cele două jumătăți ale padului sunt input-uri distincte,
+  // altfel modul Alternate n-ar avea între ce să alterneze.
+  const TOUCH_INPUTS = [
+    { id:'tapL', label:'Tap stânga',  code:null, touch:true },
+    { id:'tapR', label:'Tap dreapta', code:null, touch:true },
+  ];
+  const isTouch = (navigator.maxTouchPoints || 0) > 0 || matchMedia('(pointer: coarse)').matches;
+
+  // Nu există API care să spună „există o tastatură conectată". Pornim de la o
+  // presupunere bazată pe tipul de pointer și o corectăm la prima apăsare reală
+  // de tastă — aia e singura dovadă care nu minte. Merge și pentru un SayoDevice
+  // băgat prin OTG într-un telefon: se enumeră ca tastatură, deci se deblochează.
+  let hasKeyboard = matchMedia('(any-pointer: fine)').matches || !isTouch;
+
+  const defaultEnabled = () =>
+    isTouch && !hasKeyboard ? ['tapL', 'tapR'] : ['lmb', 'w', 'space', 'up'];
 
   // Fiecare tehnică lasă o urmă diferită în ritmul apăsărilor, deci fiecare
   // primește metrica ei — o etichetă singură n-ar spune nimic.
@@ -231,6 +272,7 @@
     durations:$('durations'), inputs:$('inputs'), modes:$('modes'), breakdown:$('breakdown'),
     modeHint:$('mode-hint'), readout:$('readout'), chart:$('chart'), themes:$('themes'),
     sesMeta:$('ses-meta'), avgBody:$('avg-body'), recent:$('recent'), clearSes:$('clear-ses'),
+    foot:$('foot'), resetBtn:$('reset-btn'),
     total:$('s-total'), peak:$('s-peak'), avg:$('s-avg'), min:$('s-min'), jit:$('s-jit'),
     tileTech:$('tile-tech'), techK:$('s-tech-k'), tech:$('s-tech'),
   };
@@ -239,14 +281,15 @@
   // ---- persisted settings ----------------------------------------------
   const saved = (() => { try { return JSON.parse(localStorage.getItem(LS)) || {}; } catch { return {}; } })();
   let duration = DURATIONS.includes(saved.duration) ? saved.duration : (saved.duration === null ? Infinity : 5);
-  let enabled  = new Set(Array.isArray(saved.enabled) && saved.enabled.length ? saved.enabled : DEFAULT_ENABLED);
+  let enabled  = new Set(Array.isArray(saved.enabled) && saved.enabled.length ? saved.enabled : defaultEnabled());
   let mode     = MODES.some(m => m.id === saved.mode) ? saved.mode : 'normal';
   let customs  = Array.isArray(saved.customs) ? saved.customs.filter(c => c && c.code && c.id) : [];
   let theme    = ['auto', 'light', 'dark'].includes(saved.theme) ? saved.theme : 'auto';
   let capturing = false;
 
-  const allInputs = () => INPUTS.concat(customs);
+  const allInputs = () => (isTouch ? INPUTS.concat(TOUCH_INPUTS) : INPUTS).concat(customs);
   const findInput = id => allInputs().find(i => i.id === id);
+  const usable    = i => !i.code || hasKeyboard;   // tastele n-au sens fără tastatură
 
   // Numele tastei așa cum îl recunoaște omul, nu cum îl scrie KeyboardEvent.code
   const KEY_NAMES = {
@@ -370,9 +413,13 @@
     press('lmb');
   });
   el.pad.addEventListener('touchstart', e => {
-    if (!enabled.has('lmb')) return;
-    e.preventDefault();
-    for (let i = 0; i < e.changedTouches.length; i++) press('lmb');
+    e.preventDefault();                       // fără zoom din dublu-tap, fără scroll
+    const r = el.pad.getBoundingClientRect(), mid = r.left + r.width / 2;
+    for (let i = 0; i < e.changedTouches.length; i++) {
+      const zone = e.changedTouches[i].clientX < mid ? 'tapL' : 'tapR';
+      if (enabled.has(zone)) press(zone);
+      else if (enabled.has('lmb')) press('lmb');
+    }
   }, { passive:false });
   el.pad.addEventListener('contextmenu', e => e.preventDefault());
 
@@ -381,6 +428,11 @@
 
   window.addEventListener('keydown', e => {
     if (e.repeat) return;
+
+    if (!hasKeyboard && e.isTrusted && e.code) {   // dovada că există o tastatură
+      hasKeyboard = true;
+      buildChips(); render();
+    }
 
     if (capturing) {                 // învățăm o tastă nouă
       e.preventDefault();
@@ -449,6 +501,10 @@
       b.className = 'chip'; b.type = 'button';
       b.textContent = inp.label;
       b.setAttribute('aria-pressed', String(enabled.has(inp.id)));
+      if (!usable(inp)) {
+        b.disabled = true;
+        b.title = 'nu s-a detectat nicio tastatură — apasă o tastă ca să se deblocheze';
+      }
       b.onclick = () => {
         if (enabled.has(inp.id)) { if (enabled.size > 1) enabled.delete(inp.id); }
         else enabled.add(inp.id);
@@ -471,6 +527,10 @@
     const add = document.createElement('button');
     add.className = 'chip chip-add'; add.type = 'button';
     add.textContent = capturing ? 'apasă o tastă…' : '+ tastă';
+    if (!hasKeyboard) {
+      add.disabled = true;
+      add.title = 'nu s-a detectat nicio tastatură';
+    }
     add.onclick = () => { capturing = true; buildChips(); render(); add.blur(); };
     el.inputs.appendChild(add);
     el.modes.innerHTML = '';
@@ -610,6 +670,9 @@
     el.clearSes.style.display = arr.length ? '' : 'none';
   }
 
+  // Pe telefon nu există tasta R, deci resetul trebuie să fie și un buton.
+  el.resetBtn.onclick = () => { reset(); el.resetBtn.blur(); };
+
   el.clearSes.onclick = () => {
     const n = runs().length;
     if (!n) return;
@@ -631,7 +694,7 @@
     const best = avgBest(runs(), 1, false);
     const bestTxt = best ? ' · record <b>' + best.toFixed(2) + '</b> cps' : '';
     if (phase === 'idle') {
-      el.msg.innerHTML = 'Apasă <b>' + [...enabled].map(findInput).filter(Boolean).map(i => i.label).join(' / ') +
+      el.msg.innerHTML = 'Apasă <b>' + [...enabled].map(findInput).filter(Boolean).filter(usable).map(i => i.label).join(' / ') +
         '</b> ca să pornești' + (duration === Infinity ? '' : ' testul de <b>' + duration + 's</b>') + bestTxt;
     } else if (phase === 'running') {
       el.msg.innerHTML = duration === Infinity
@@ -693,7 +756,7 @@
     // pe input
     el.breakdown.innerHTML = '';
     for (const inp of allInputs()) {
-      if (!enabled.has(inp.id)) continue;
+      if (!enabled.has(inp.id) || !usable(inp)) continue;
       const n = stamps.reduce((a, s) => a + (s.id === inp.id ? 1 : 0), 0);
       const pct = stamps.length ? (n / stamps.length) * 100 : 0;
       const row = document.createElement('div');
@@ -704,6 +767,12 @@
         '<span class="row-v num"><b>' + n + '</b> · ' + (n / secs).toFixed(2) + ' cps</span>';
       el.breakdown.appendChild(row);
     }
+
+    el.pad.classList.toggle('zones', isTouch && (enabled.has('tapL') || enabled.has('tapR')));
+    el.foot.innerHTML = hasKeyboard
+      ? '<kbd>R</kbd> resetează · <kbd>Esc</kbd> oprește · click stânga contează doar în zona mare de sus.'
+      : 'Atinge zona mare de sus — jumătatea stângă și cea dreaptă contează ca input-uri separate, ' +
+        'ca să poți alterna cu două degete. Tastele se deblochează singure dacă legi o tastatură.';
 
     // istoricul nu se schimbă în timpul unei rulări — n-are rost rescris la 60fps
     if (phase !== 'running') renderSession();

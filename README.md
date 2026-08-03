@@ -35,6 +35,22 @@ Un singur fișier, zero dependențe, zero build.
 - **Istoric separat** pentru fiecare combinație durată × tehnică — recordul de la
   `10s / alternate` nu se amestecă cu cel de la `5s / jitter`
 
+## Pe telefon și tabletă
+
+Padul e adaptat pentru atingere: **jumătatea stângă și cea dreaptă contează ca input-uri
+separate** (`Tap stânga` / `Tap dreapta`), ca să ai între ce alterna cu două degete —
+altfel modul Alternate n-ar avea niciun sens pe ecran. Atingerile multiple simultane se
+numără toate, deci butterfly cu două degete merge la fel ca pe mouse.
+
+Tastele sunt **blocate cât timp nu există tastatură**. Nu există niciun API care să spună
+„e conectată o tastatură", așa că se pornește de la o presupunere bazată pe tipul de pointer
+și se corectează la **prima apăsare reală de tastă** — aia e singura dovadă care nu minte.
+Deci dacă bagi un SayoDevice prin OTG în telefon, se enumeră ca tastatură și tastele se
+deblochează singure la prima apăsare.
+
+În rest: fără zoom din dublu-tap, fără pull-to-refresh, fără meniul de la ținut apăsat,
+ținte de atins mai mari și un buton `Reset` vizibil, fiindcă pe telefon nu există tasta `R`.
+
 ## Cum îl folosești
 
 Deschide `index.html` în browser. Sau, dacă e pe GitHub Pages, direct linkul.
