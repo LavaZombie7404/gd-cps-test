@@ -16,7 +16,15 @@ Un singur fișier, zero dependențe, zero build.
   (un macro are σ aproape 0, o mână umană nu)
 - **Grafic CPS în timp**, cu readout la hover
 - **Breakdown pe input** — câte apăsări a dat fiecare tastă
-- **Record salvat local** pentru fiecare durată
+- **Taste custom** — `+ tastă`, apeși ce vrei, se adaugă. Se salvează între sesiuni,
+  o ștergi cu `×` de pe chip.
+- **Moduri de tehnică**, fiecare cu metrica lui — o etichetă singură n-ar spune nimic:
+  - **Jitter** → *constanță*: σ raportat la intervalul mediu. Viteza vine ușor, ritmul e greu.
+  - **Butterfly** → *balans*: două degete alternând lasă pauze pare/impare; 100% = trag la fel,
+    sub 70% = unul rămâne în urmă.
+  - **Alternate** → *alternanță*: ce procent din apăsări chiar au schimbat butonul.
+    Repetările pe același buton îți strică rata.
+- **Record salvat local** pentru fiecare durată **și** fiecare tehnică, separat
 
 ## Cum îl folosești
 

@@ -48,6 +48,9 @@
   .chip:hover{border-color:var(--accent); color:var(--ink)}
   .chip[aria-pressed="true"]{background:var(--accent-soft); border-color:var(--accent); color:var(--ink)}
   .chip .num{font-size:13px}
+  .chip-add{border-style:dashed; color:var(--ink-3)}
+  .chip-x{margin-left:7px; color:var(--ink-3); font-size:15px; line-height:1}
+  .chip-x:hover{color:var(--ink)}
 
   .pad{
     position:relative; overflow:hidden;
@@ -196,13 +199,33 @@
   let duration = DURATIONS.includes(saved.duration) ? saved.duration : (saved.duration === null ? Infinity : 5);
   let enabled  = new Set(Array.isArray(saved.enabled) && saved.enabled.length ? saved.enabled : DEFAULT_ENABLED);
   let mode     = MODES.some(m => m.id === saved.mode) ? saved.mode : 'normal';
+  let customs  = Array.isArray(saved.customs) ? saved.customs.filter(c => c && c.code && c.id) : [];
+  let capturing = false;
+
+  const allInputs = () => INPUTS.concat(customs);
+  const findInput = id => allInputs().find(i => i.id === id);
+
+  // Numele tastei așa cum îl recunoaște omul, nu cum îl scrie KeyboardEvent.code
+  const KEY_NAMES = {
+    Space:'Space', Enter:'Enter', Tab:'Tab', Backspace:'Bksp', CapsLock:'Caps',
+    ArrowUp:'↑', ArrowDown:'↓', ArrowLeft:'←', ArrowRight:'→',
+    ControlLeft:'LCtrl', ControlRight:'RCtrl', ShiftLeft:'LShift', ShiftRight:'RShift',
+    AltLeft:'LAlt', AltRight:'RAlt', MetaLeft:'LWin', MetaRight:'RWin',
+  };
+  function labelForCode(code) {
+    if (KEY_NAMES[code]) return KEY_NAMES[code];
+    if (code.startsWith('Key'))    return code.slice(3);
+    if (code.startsWith('Digit'))  return code.slice(5);
+    if (code.startsWith('Numpad')) return 'Num' + code.slice(6);
+    return code;
+  }
   const bests  = saved.bests && typeof saved.bests === 'object' ? saved.bests : {};
 
   const save = () => {
     try {
       localStorage.setItem(LS, JSON.stringify({
         duration: duration === Infinity ? null : duration,
-        enabled: [...enabled], mode, bests,
+        enabled: [...enabled], mode, customs, bests,
       }));
     } catch { /* private mode — nu-i nimic */ }
   };
@@ -266,14 +289,26 @@
   }, { passive:false });
   el.pad.addEventListener('contextmenu', e => e.preventDefault());
 
+  const MOD_CODES = new Set(['ControlLeft', 'ControlRight', 'ShiftLeft', 'ShiftRight',
+                             'AltLeft', 'AltRight', 'MetaLeft', 'MetaRight']);
+
   window.addEventListener('keydown', e => {
     if (e.repeat) return;
+
+    if (capturing) {                 // învățăm o tastă nouă
+      e.preventDefault();
+      capturing = false;
+      if (e.code !== 'Escape') addCustom(e.code);
+      buildChips(); render();
+      return;
+    }
+
     // Modificatorul propriu al tastei nu se pune la socoteală: keydown-ul lui
     // LCtrl are el însuși ctrlKey=true.
-    const self = e.code === 'ControlLeft' || e.code === 'ShiftLeft';
-    const mod  = (!self && e.ctrlKey) || e.altKey || e.metaKey;
+    const self = MOD_CODES.has(e.code);
+    const mod  = !self && (e.ctrlKey || e.altKey || e.metaKey);
 
-    const inp = INPUTS.find(i => i.code && i.code === e.code);
+    const inp = allInputs().find(i => i.code && i.code === e.code);
     if (inp && enabled.has(inp.id)) {
       // Pe un SayoDevice butoanele se suprapun câteva ms, deci apăsarea se
       // numără chiar dacă un modificator e ținut. Dar nu blocăm default-ul
@@ -295,6 +330,14 @@
   });
 
   // ---- controls ---------------------------------------------------------
+  function addCustom(code) {
+    const existing = allInputs().find(i => i.code === code);
+    if (existing) { enabled.add(existing.id); save(); return; }   // o avem deja, doar o aprindem
+    customs.push({ id: 'c:' + code, label: labelForCode(code), code, custom: true });
+    enabled.add('c:' + code);
+    save();
+  }
+
   function buildChips() {
     el.durations.innerHTML = '';
     for (const d of DURATIONS) {
@@ -306,7 +349,7 @@
       el.durations.appendChild(b);
     }
     el.inputs.innerHTML = '';
-    for (const inp of INPUTS) {
+    for (const inp of allInputs()) {
       const b = document.createElement('button');
       b.className = 'chip'; b.type = 'button';
       b.textContent = inp.label;
@@ -316,8 +359,25 @@
         else enabled.add(inp.id);
         save(); reset(); buildChips();
       };
+      if (inp.custom) {
+        const x = document.createElement('span');
+        x.className = 'chip-x'; x.textContent = '×'; x.title = 'șterge tasta';
+        x.onclick = ev => {
+          ev.stopPropagation();
+          customs = customs.filter(c => c.id !== inp.id);
+          enabled.delete(inp.id);
+          if (!enabled.size) enabled.add('lmb');
+          save(); reset(); buildChips();
+        };
+        b.appendChild(x);
+      }
       el.inputs.appendChild(b);
     }
+    const add = document.createElement('button');
+    add.className = 'chip chip-add'; add.type = 'button';
+    add.textContent = capturing ? 'apasă o tastă…' : '+ tastă';
+    add.onclick = () => { capturing = true; buildChips(); render(); add.blur(); };
+    el.inputs.appendChild(add);
     el.modes.innerHTML = '';
     for (const m of MODES) {
       const b = document.createElement('button');
@@ -424,7 +484,7 @@
     const best = bests[bestKey()];
     const bestTxt = best ? ' · record <b>' + best.toFixed(2) + '</b> cps' : '';
     if (phase === 'idle') {
-      el.msg.innerHTML = 'Apasă <b>' + [...enabled].map(id => INPUTS.find(i => i.id === id).label).join(' / ') +
+      el.msg.innerHTML = 'Apasă <b>' + [...enabled].map(findInput).filter(Boolean).map(i => i.label).join(' / ') +
         '</b> ca să pornești' + (duration === Infinity ? '' : ' testul de <b>' + duration + 's</b>') + bestTxt;
     } else if (phase === 'running') {
       el.msg.innerHTML = duration === Infinity
@@ -478,13 +538,14 @@
     }
 
     let hint = m.hint;
-    if (mode === 'alternate' && enabled.size < 2)
+    if (capturing) hint = '<b>Apasă tasta pe care o vrei…</b> <span class="warn">Esc anulează.</span>';
+    else if (mode === 'alternate' && enabled.size < 2)
       hint += ' <span class="warn">Ai un singur input activ — aprinde încă unul.</span>';
     el.modeHint.innerHTML = hint;
 
     // pe input
     el.breakdown.innerHTML = '';
-    for (const inp of INPUTS) {
+    for (const inp of allInputs()) {
       if (!enabled.has(inp.id)) continue;
       const n = stamps.reduce((a, s) => a + (s.id === inp.id ? 1 : 0), 0);
       const pct = stamps.length ? (n / stamps.length) * 100 : 0;
