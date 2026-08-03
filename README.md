@@ -1,5 +1,7 @@
 # CPS Test — Geometry Dash
 
+**▶ https://lavazombie7404.github.io/gd-cps-test/**
+
 Un test de clicks-per-second care numără și **tastele**, nu doar mouse-ul: `W`, `Space`, `↑` și **click stânga**.
 Exact input-urile folosite în Geometry Dash — util când vrei să vezi cât scoate un macro sau un SayoDevice.
 
