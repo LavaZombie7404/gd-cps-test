@@ -1,0 +1,435 @@
+<!doctype html>
+<html lang="ro">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CPS Test — Geometry Dash</title>
+<style>
+  :root{
+    --bg:#0b0e14; --surface:#141a23; --surface-2:#1b2430; --line:#26313f;
+    --ink:#e6edf6; --ink-2:#9fb0c4; --ink-3:#67788d;
+    --accent:#38bdf8; --accent-soft:rgba(56,189,248,.14);
+    --radius:14px;
+  }
+  @media (prefers-color-scheme: light){
+    :root{
+      --bg:#f4f7fb; --surface:#ffffff; --surface-2:#eef3f9; --line:#dbe3ed;
+      --ink:#0d1622; --ink-2:#4a5b70; --ink-3:#7b8b9f;
+      --accent:#0284c7; --accent-soft:rgba(2,132,199,.12);
+    }
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{
+    background:var(--bg); color:var(--ink);
+    font:15px/1.5 ui-sans-serif,system-ui,"Segoe UI",Roboto,sans-serif;
+    display:flex; justify-content:center; padding:28px 18px 48px;
+  }
+  .wrap{width:100%; max-width:840px}
+  .num{font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace; font-variant-numeric:tabular-nums}
+
+  header{margin-bottom:20px}
+  h1{margin:0; font-size:22px; letter-spacing:-.01em}
+  .sub{margin:4px 0 0; color:var(--ink-2); font-size:13.5px}
+
+  .controls{display:flex; flex-wrap:wrap; gap:18px; margin-bottom:16px}
+  .group{display:flex; flex-direction:column; gap:7px}
+  .group-label{font-size:11px; letter-spacing:.08em; text-transform:uppercase; color:var(--ink-3)}
+  .chips{display:flex; flex-wrap:wrap; gap:6px}
+  .chip{
+    appearance:none; cursor:pointer; font:inherit; font-size:13px;
+    background:var(--surface); color:var(--ink-2);
+    border:1px solid var(--line); border-radius:9px; padding:6px 12px;
+    transition:background .12s,border-color .12s,color .12s;
+  }
+  .chip:hover{border-color:var(--accent); color:var(--ink)}
+  .chip[aria-pressed="true"]{background:var(--accent-soft); border-color:var(--accent); color:var(--ink)}
+  .chip .num{font-size:13px}
+
+  .pad{
+    position:relative; overflow:hidden;
+    background:var(--surface); border:1px solid var(--line); border-radius:var(--radius);
+    min-height:236px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:2px;
+    cursor:pointer; user-select:none; -webkit-user-select:none; -webkit-tap-highlight-color:transparent;
+    transition:border-color .12s;
+  }
+  .pad[data-phase="running"]{border-color:var(--accent)}
+  .hero{font-size:clamp(56px,15vw,96px); line-height:1; font-weight:650; letter-spacing:-.03em}
+  .hero-unit{font-size:13px; letter-spacing:.14em; text-transform:uppercase; color:var(--ink-3); margin-top:8px}
+  .pad-msg{margin-top:14px; color:var(--ink-2); font-size:14px; text-align:center; padding:0 18px}
+  .pad-msg b{color:var(--ink); font-weight:600}
+  .progress{position:absolute; left:0; bottom:0; height:3px; width:0; background:var(--accent)}
+
+  .stats{display:grid; grid-template-columns:repeat(auto-fit,minmax(132px,1fr)); gap:8px; margin-top:8px}
+  .tile{background:var(--surface); border:1px solid var(--line); border-radius:11px; padding:11px 13px}
+  .tile-k{font-size:11px; letter-spacing:.06em; text-transform:uppercase; color:var(--ink-3)}
+  .tile-v{font-size:20px; margin-top:3px}
+  .tile-v small{font-size:12px; color:var(--ink-3); margin-left:2px}
+
+  .card{background:var(--surface); border:1px solid var(--line); border-radius:var(--radius); padding:14px 16px; margin-top:8px}
+  .card-head{display:flex; justify-content:space-between; align-items:baseline; gap:12px; margin-bottom:10px}
+  .card-title{font-size:12px; letter-spacing:.06em; text-transform:uppercase; color:var(--ink-3)}
+  .readout{font-size:12px; color:var(--ink-2); min-height:1.2em}
+  canvas{display:block; width:100%; height:112px}
+
+  .rows{display:flex; flex-direction:column; gap:9px}
+  .row{display:grid; grid-template-columns:64px 1fr 118px; align-items:center; gap:12px}
+  .row-k{font-size:13px; color:var(--ink-2)}
+  .row-bar{height:8px; background:var(--surface-2); border-radius:4px; overflow:hidden}
+  .row-bar i{display:block; height:100%; width:0; background:var(--accent); border-radius:4px; transition:width .12s}
+  .row-v{font-size:13px; color:var(--ink-2); text-align:right}
+  .row-v b{color:var(--ink); font-weight:600}
+
+  footer{margin-top:18px; color:var(--ink-3); font-size:12.5px}
+  kbd{
+    font-family:ui-monospace,Consolas,monospace; font-size:11.5px;
+    background:var(--surface-2); border:1px solid var(--line); border-radius:5px; padding:1px 5px;
+  }
+  @media (max-width:520px){ .row{grid-template-columns:52px 1fr 96px} }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <h1>CPS Test — Geometry Dash</h1>
+    <p class="sub">Numără <b>W</b>, <b>Space</b>, <b>↑</b> și <b>click stânga</b>. Pentru macro-uri, SayoDevice și spam manual.</p>
+  </header>
+
+  <div class="controls">
+    <div class="group">
+      <span class="group-label">Durată</span>
+      <div class="chips" id="durations"></div>
+    </div>
+    <div class="group">
+      <span class="group-label">Input-uri</span>
+      <div class="chips" id="inputs"></div>
+    </div>
+  </div>
+
+  <div class="pad" id="pad" data-phase="idle">
+    <div class="hero num" id="hero">0.00</div>
+    <div class="hero-unit">clicks / sec</div>
+    <p class="pad-msg" id="msg"></p>
+    <div class="progress" id="progress"></div>
+  </div>
+
+  <div class="stats">
+    <div class="tile"><div class="tile-k">Total</div><div class="tile-v num" id="s-total">0</div></div>
+    <div class="tile"><div class="tile-k">Peak CPS</div><div class="tile-v num" id="s-peak">0.0</div></div>
+    <div class="tile"><div class="tile-k">Interval mediu</div><div class="tile-v num" id="s-avg">—<small>ms</small></div></div>
+    <div class="tile"><div class="tile-k">Cel mai scurt</div><div class="tile-v num" id="s-min">—<small>ms</small></div></div>
+    <div class="tile"><div class="tile-k">Jitter σ</div><div class="tile-v num" id="s-jit">—<small>ms</small></div></div>
+  </div>
+
+  <div class="card">
+    <div class="card-head">
+      <span class="card-title">CPS în timp</span>
+      <span class="readout num" id="readout"></span>
+    </div>
+    <canvas id="chart"></canvas>
+  </div>
+
+  <div class="card">
+    <div class="card-head"><span class="card-title">Pe input</span></div>
+    <div class="rows" id="breakdown"></div>
+  </div>
+
+  <footer>
+    <kbd>R</kbd> resetează · <kbd>Esc</kbd> oprește · click stânga contează doar în zona mare de sus.
+  </footer>
+</div>
+
+<script>
+(() => {
+  'use strict';
+
+  const INPUTS = [
+    { id:'lmb',   label:'LMB',   code:null },
+    { id:'w',     label:'W',     code:'KeyW' },
+    { id:'space', label:'Space', code:'Space' },
+    { id:'up',    label:'↑',     code:'ArrowUp' },
+  ];
+  const DURATIONS = [1, 2, 5, 10, 30, 60, Infinity];
+  const LS = 'cpstest.v1';
+
+  const $ = id => document.getElementById(id);
+  const el = {
+    pad:$('pad'), hero:$('hero'), msg:$('msg'), progress:$('progress'),
+    durations:$('durations'), inputs:$('inputs'), breakdown:$('breakdown'),
+    readout:$('readout'), chart:$('chart'),
+    total:$('s-total'), peak:$('s-peak'), avg:$('s-avg'), min:$('s-min'), jit:$('s-jit'),
+  };
+  const ctx = el.chart.getContext('2d');
+
+  // ---- persisted settings ----------------------------------------------
+  const saved = (() => { try { return JSON.parse(localStorage.getItem(LS)) || {}; } catch { return {}; } })();
+  let duration = DURATIONS.includes(saved.duration) ? saved.duration : (saved.duration === null ? Infinity : 5);
+  let enabled  = new Set(Array.isArray(saved.enabled) && saved.enabled.length ? saved.enabled : INPUTS.map(i => i.id));
+  const bests  = saved.bests && typeof saved.bests === 'object' ? saved.bests : {};
+
+  const save = () => {
+    try {
+      localStorage.setItem(LS, JSON.stringify({
+        duration: duration === Infinity ? null : duration,
+        enabled: [...enabled], bests,
+      }));
+    } catch { /* private mode — nu-i nimic */ }
+  };
+
+  // ---- run state --------------------------------------------------------
+  let phase = 'idle';          // idle | running | done
+  let t0 = 0, elapsed = 0, lockUntil = 0;
+  let stamps = [];             // { t, id } — t în ms de la start
+  let peakCps = 0;
+  let hoverX = null;
+
+  const durKey  = () => duration === Infinity ? 'free' : String(duration);
+  const durText = d => d === Infinity ? '∞' : d + 's';
+
+  function reset(keepDone) {
+    phase = 'idle'; t0 = 0; elapsed = 0; stamps = []; peakCps = 0;
+    if (!keepDone) lockUntil = 0;
+    render();
+  }
+
+  function press(id) {
+    const now = performance.now();
+    if (phase === 'done') {
+      if (now < lockUntil) return;
+      reset(true);
+    }
+    if (phase === 'idle') { phase = 'running'; t0 = now; }
+
+    const t = now - t0;
+    if (duration !== Infinity && t > duration * 1000) return;
+    stamps.push({ t, id });
+
+    // peak = fereastră glisantă de 1s care se termină la această apăsare
+    let n = 0;
+    for (let i = stamps.length - 1; i >= 0 && stamps[i].t > t - 1000; i--) n++;
+    if (n > peakCps) peakCps = n;
+  }
+
+  function finish() {
+    phase = 'done';
+    elapsed = duration * 1000;
+    lockUntil = performance.now() + 700;
+    const cps = stamps.length / duration;
+    const key = durKey();
+    if (!bests[key] || cps > bests[key]) { bests[key] = cps; save(); }
+    render();
+  }
+
+  // ---- input ------------------------------------------------------------
+  el.pad.addEventListener('mousedown', e => {
+    if (e.button !== 0 || !enabled.has('lmb')) return;
+    e.preventDefault();
+    press('lmb');
+  });
+  el.pad.addEventListener('touchstart', e => {
+    if (!enabled.has('lmb')) return;
+    e.preventDefault();
+    for (let i = 0; i < e.changedTouches.length; i++) press('lmb');
+  }, { passive:false });
+  el.pad.addEventListener('contextmenu', e => e.preventDefault());
+
+  window.addEventListener('keydown', e => {
+    if (e.repeat || e.ctrlKey || e.altKey || e.metaKey) return;
+    const inp = INPUTS.find(i => i.code && i.code === e.code);
+    if (inp && enabled.has(inp.id)) {
+      e.preventDefault();          // fără scroll pe Space/↑ și fără click pe butonul focusat
+      press(inp.id);
+      return;
+    }
+    if (e.code === 'KeyR' || e.code === 'Escape') { e.preventDefault(); reset(); }
+  });
+
+  // ---- controls ---------------------------------------------------------
+  function buildChips() {
+    el.durations.innerHTML = '';
+    for (const d of DURATIONS) {
+      const b = document.createElement('button');
+      b.className = 'chip num'; b.type = 'button';
+      b.textContent = durText(d);
+      b.setAttribute('aria-pressed', String(d === duration));
+      b.onclick = () => { duration = d; save(); reset(); b.blur(); };
+      el.durations.appendChild(b);
+    }
+    el.inputs.innerHTML = '';
+    for (const inp of INPUTS) {
+      const b = document.createElement('button');
+      b.className = 'chip'; b.type = 'button';
+      b.textContent = inp.label;
+      b.setAttribute('aria-pressed', String(enabled.has(inp.id)));
+      b.onclick = () => {
+        if (enabled.has(inp.id)) { if (enabled.size > 1) enabled.delete(inp.id); }
+        else enabled.add(inp.id);
+        save(); reset(); buildChips();
+      };
+      el.inputs.appendChild(b);
+    }
+  }
+
+  // ---- chart ------------------------------------------------------------
+  const BUCKETS = 48;
+
+  function sizeCanvas() {
+    const dpr = window.devicePixelRatio || 1;
+    const r = el.chart.getBoundingClientRect();
+    el.chart.width  = Math.max(1, Math.round(r.width  * dpr));
+    el.chart.height = Math.max(1, Math.round(r.height * dpr));
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+  window.addEventListener('resize', sizeCanvas);
+
+  el.chart.addEventListener('mousemove', e => {
+    hoverX = e.clientX - el.chart.getBoundingClientRect().left;
+  });
+  el.chart.addEventListener('mouseleave', () => { hoverX = null; });
+
+  function chartSpan() {
+    if (duration !== Infinity) return duration * 1000;
+    return Math.max(5000, Math.ceil(elapsed / 5000) * 5000);
+  }
+
+  function drawChart() {
+    const css = getComputedStyle(document.documentElement);
+    const w = el.chart.clientWidth, h = el.chart.clientHeight;
+    ctx.clearRect(0, 0, w, h);
+    if (w < 2) return;
+
+    const span = chartSpan();
+    const bucketMs = span / BUCKETS;
+    const vals = new Array(BUCKETS).fill(0);
+    for (const s of stamps) {
+      const i = Math.min(BUCKETS - 1, Math.floor(s.t / bucketMs));
+      if (i >= 0) vals[i]++;
+    }
+    const cps = vals.map(v => v / (bucketMs / 1000));
+    const max = Math.max(1, ...cps);
+
+    const padB = 14, plotH = h - padB;
+    const bw = w / BUCKETS;
+
+    // linie de bază + plafon, discrete
+    ctx.strokeStyle = css.getPropertyValue('--line').trim();
+    ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(0, plotH + .5); ctx.lineTo(w, plotH + .5); ctx.stroke();
+
+    ctx.fillStyle = css.getPropertyValue('--accent').trim();
+    for (let i = 0; i < BUCKETS; i++) {
+      if (!cps[i]) continue;
+      const bh = Math.max(2, (cps[i] / max) * (plotH - 6));
+      const x = i * bw + 1, bwidth = Math.max(1, bw - 2);   // 2px de spațiu între bare
+      const r = Math.min(4, bwidth / 2, bh);
+      ctx.beginPath();
+      if (ctx.roundRect) ctx.roundRect(x, plotH - bh, bwidth, bh, [r, r, 0, 0]);
+      else ctx.rect(x, plotH - bh, bwidth, bh);
+      ctx.fill();
+    }
+
+    // etichete: plafon + capetele axei de timp
+    ctx.fillStyle = css.getPropertyValue('--ink-3').trim();
+    ctx.font = '11px ui-monospace,Consolas,monospace';
+    ctx.textBaseline = 'top';
+    ctx.textAlign = 'left';  ctx.fillText('0s', 0, plotH + 3);
+    ctx.textAlign = 'right'; ctx.fillText((span / 1000) + 's', w, plotH + 3);
+    ctx.textAlign = 'left';  ctx.fillText(max.toFixed(1) + ' cps', 2, 1);
+
+    if (hoverX != null) {
+      const i = Math.max(0, Math.min(BUCKETS - 1, Math.floor(hoverX / bw)));
+      ctx.strokeStyle = css.getPropertyValue('--ink-3').trim();
+      ctx.globalAlpha = .5;
+      ctx.beginPath();
+      ctx.moveTo(i * bw + bw / 2, 0); ctx.lineTo(i * bw + bw / 2, plotH); ctx.stroke();
+      ctx.globalAlpha = 1;
+      el.readout.textContent =
+        (i * bucketMs / 1000).toFixed(2) + 's – ' + ((i + 1) * bucketMs / 1000).toFixed(2) + 's  ·  ' +
+        cps[i].toFixed(1) + ' cps  ·  ' + vals[i] + ' apăsări';
+    } else {
+      el.readout.textContent = '';
+    }
+  }
+
+  // ---- render -----------------------------------------------------------
+  function render() {
+    el.pad.dataset.phase = phase;
+
+    const secs = duration === Infinity
+      ? Math.max(elapsed / 1000, 1e-6)
+      : (phase === 'idle' ? duration : (phase === 'done' ? duration : Math.max(elapsed / 1000, 1e-6)));
+    const live = phase === 'idle' ? 0 : stamps.length / secs;
+
+    el.hero.textContent = live.toFixed(2);
+
+    const best = bests[durKey()];
+    const bestTxt = best ? ' · record <b>' + best.toFixed(2) + '</b> cps' : '';
+    if (phase === 'idle') {
+      el.msg.innerHTML = 'Apasă <b>' + [...enabled].map(id => INPUTS.find(i => i.id === id).label).join(' / ') +
+        '</b> ca să pornești' + (duration === Infinity ? '' : ' testul de <b>' + duration + 's</b>') + bestTxt;
+    } else if (phase === 'running') {
+      el.msg.innerHTML = duration === Infinity
+        ? 'Liber — <b>' + (elapsed / 1000).toFixed(1) + 's</b> · <kbd>R</kbd> resetează'
+        : '<b>' + Math.max(0, duration - elapsed / 1000).toFixed(2) + 's</b> rămase';
+    } else {
+      el.msg.innerHTML = '<b>' + stamps.length + '</b> apăsări în ' + duration + 's' + bestTxt +
+        ' · apasă din nou pentru încă o tură';
+    }
+
+    el.progress.style.width = duration === Infinity
+      ? '0%'
+      : Math.min(100, (elapsed / (duration * 1000)) * 100) + '%';
+
+    // interval / jitter
+    const gaps = [];
+    for (let i = 1; i < stamps.length; i++) gaps.push(stamps[i].t - stamps[i - 1].t);
+    const mean = gaps.length ? gaps.reduce((a, b) => a + b, 0) / gaps.length : null;
+    const sd = gaps.length > 1
+      ? Math.sqrt(gaps.reduce((a, b) => a + (b - mean) ** 2, 0) / (gaps.length - 1))
+      : null;
+
+    el.total.textContent = stamps.length;
+    el.peak.textContent  = peakCps.toFixed(1);
+    el.avg.innerHTML = mean == null ? '—<small>ms</small>' : mean.toFixed(1) + '<small>ms</small>';
+    el.min.innerHTML = gaps.length ? Math.min(...gaps).toFixed(1) + '<small>ms</small>' : '—<small>ms</small>';
+    el.jit.innerHTML = sd == null ? '—<small>ms</small>' : sd.toFixed(1) + '<small>ms</small>';
+
+    // pe input
+    el.breakdown.innerHTML = '';
+    for (const inp of INPUTS) {
+      if (!enabled.has(inp.id)) continue;
+      const n = stamps.reduce((a, s) => a + (s.id === inp.id ? 1 : 0), 0);
+      const pct = stamps.length ? (n / stamps.length) * 100 : 0;
+      const row = document.createElement('div');
+      row.className = 'row';
+      row.innerHTML =
+        '<span class="row-k">' + inp.label + '</span>' +
+        '<span class="row-bar"><i style="width:' + pct.toFixed(1) + '%"></i></span>' +
+        '<span class="row-v num"><b>' + n + '</b> · ' + (n / secs).toFixed(2) + ' cps</span>';
+      el.breakdown.appendChild(row);
+    }
+
+    drawChart();
+  }
+
+  // ---- loop -------------------------------------------------------------
+  function frame() {
+    if (phase === 'running') {
+      elapsed = performance.now() - t0;
+      if (duration !== Infinity && elapsed >= duration * 1000) finish();
+      else render();
+    } else if (hoverX != null) {
+      drawChart();
+    }
+    requestAnimationFrame(frame);
+  }
+
+  buildChips();
+  sizeCanvas();
+  reset();
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
