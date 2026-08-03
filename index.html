@@ -4,19 +4,29 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>CPS Test — Geometry Dash</title>
+<script>
+// Rulează înainte de prima pictare, ca să nu clipească tema greșită la refresh.
+(function () {
+  var t = 'auto';
+  try { t = (JSON.parse(localStorage.getItem('cpstest.v1')) || {}).theme || 'auto'; } catch (e) {}
+  document.documentElement.dataset.theme =
+    t === 'auto' ? (matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark') : t;
+})();
+</script>
 <style>
-  :root{
+  /* Scriptul din <head> pune data-theme înainte de prima pictare, deci n-avem
+     nevoie de media query aici și nici de culori scrise de două ori. */
+  :root, :root[data-theme="dark"]{
     --bg:#0b0e14; --surface:#141a23; --surface-2:#1b2430; --line:#26313f;
     --ink:#e6edf6; --ink-2:#9fb0c4; --ink-3:#67788d;
     --accent:#38bdf8; --accent-soft:rgba(56,189,248,.14);
-    --radius:14px;
+    --radius:14px; color-scheme:dark;
   }
-  @media (prefers-color-scheme: light){
-    :root{
-      --bg:#f4f7fb; --surface:#ffffff; --surface-2:#eef3f9; --line:#dbe3ed;
-      --ink:#0d1622; --ink-2:#4a5b70; --ink-3:#7b8b9f;
-      --accent:#0284c7; --accent-soft:rgba(2,132,199,.12);
-    }
+  :root[data-theme="light"]{
+    --bg:#f4f7fb; --surface:#ffffff; --surface-2:#eef3f9; --line:#d7e0ea;
+    --ink:#0d1622; --ink-2:#4a5b70; --ink-3:#76869a;
+    --accent:#0369a1; --accent-soft:rgba(3,105,161,.11);
+    color-scheme:light;
   }
   *{box-sizing:border-box}
   html,body{margin:0;padding:0}
@@ -127,6 +137,10 @@
       <span class="group-label">Tehnică</span>
       <div class="chips" id="modes"></div>
     </div>
+    <div class="group">
+      <span class="group-label">Temă</span>
+      <div class="chips" id="themes"></div>
+    </div>
   </div>
   <p class="mode-hint" id="mode-hint"></p>
 
@@ -205,12 +219,17 @@
   ];
   const DURATIONS = [1, 2, 5, 10, 30, 60, Infinity];
   const LS = 'cpstest.v1';
+  const THEMES = [
+    { id:'auto',  label:'Auto'    },
+    { id:'light', label:'Deschis' },
+    { id:'dark',  label:'Închis'  },
+  ];
 
   const $ = id => document.getElementById(id);
   const el = {
     pad:$('pad'), hero:$('hero'), msg:$('msg'), progress:$('progress'),
     durations:$('durations'), inputs:$('inputs'), modes:$('modes'), breakdown:$('breakdown'),
-    modeHint:$('mode-hint'), readout:$('readout'), chart:$('chart'),
+    modeHint:$('mode-hint'), readout:$('readout'), chart:$('chart'), themes:$('themes'),
     sesMeta:$('ses-meta'), avgBody:$('avg-body'), recent:$('recent'), clearSes:$('clear-ses'),
     total:$('s-total'), peak:$('s-peak'), avg:$('s-avg'), min:$('s-min'), jit:$('s-jit'),
     tileTech:$('tile-tech'), techK:$('s-tech-k'), tech:$('s-tech'),
@@ -223,6 +242,7 @@
   let enabled  = new Set(Array.isArray(saved.enabled) && saved.enabled.length ? saved.enabled : DEFAULT_ENABLED);
   let mode     = MODES.some(m => m.id === saved.mode) ? saved.mode : 'normal';
   let customs  = Array.isArray(saved.customs) ? saved.customs.filter(c => c && c.code && c.id) : [];
+  let theme    = ['auto', 'light', 'dark'].includes(saved.theme) ? saved.theme : 'auto';
   let capturing = false;
 
   const allInputs = () => INPUTS.concat(customs);
@@ -257,7 +277,7 @@
     try {
       localStorage.setItem(LS, JSON.stringify({
         duration: duration === Infinity ? null : duration,
-        enabled: [...enabled], mode, customs, hist,
+        enabled: [...enabled], mode, customs, theme, hist,
       }));
     } catch { /* private mode — nu-i nimic */ }
   };
@@ -397,6 +417,14 @@
   });
 
   // ---- controls ---------------------------------------------------------
+  const mqLight = matchMedia('(prefers-color-scheme: light)');
+  function applyTheme() {
+    document.documentElement.dataset.theme =
+      theme === 'auto' ? (mqLight.matches ? 'light' : 'dark') : theme;
+    drawChart();   // canvasul își ia culorile din variabilele CSS, deci trebuie redesenat
+  }
+  mqLight.addEventListener('change', () => { if (theme === 'auto') applyTheme(); });
+
   function addCustom(code) {
     const existing = allInputs().find(i => i.code === code);
     if (existing) { enabled.add(existing.id); save(); return; }   // o avem deja, doar o aprindem
@@ -453,6 +481,16 @@
       b.setAttribute('aria-pressed', String(m.id === mode));
       b.onclick = () => { mode = m.id; save(); reset(); buildChips(); b.blur(); };
       el.modes.appendChild(b);
+    }
+    el.themes.innerHTML = '';
+    for (const t of THEMES) {
+      const b = document.createElement('button');
+      b.className = 'chip'; b.type = 'button';
+      b.textContent = t.label;
+      b.setAttribute('aria-pressed', String(t.id === theme));
+      // schimbarea temei nu întrerupe rularea în curs
+      b.onclick = () => { theme = t.id; save(); applyTheme(); buildChips(); b.blur(); };
+      el.themes.appendChild(b);
     }
   }
 
@@ -686,6 +724,7 @@
 
   buildChips();
   sizeCanvas();
+  applyTheme();
   reset();
   requestAnimationFrame(frame);
 })();

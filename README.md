@@ -16,6 +16,9 @@ Un singur fișier, zero dependențe, zero build.
   (un macro are σ aproape 0, o mână umană nu)
 - **Grafic CPS în timp**, cu readout la hover
 - **Breakdown pe input** — câte apăsări a dat fiecare tastă
+- **Temă**: Auto / Deschis / Închis. Auto urmărește sistemul și reacționează dacă acesta
+  se schimbă în timpul sesiunii. Tema se aplică înainte de prima pictare, deci nu clipește
+  la refresh, iar schimbarea ei nu întrerupe o rulare în curs.
 - **Taste custom** — `+ tastă`, apeși ce vrei, se adaugă. Se salvează între sesiuni,
   o ștergi cu `×` de pe chip.
 - **Moduri de tehnică**, fiecare cu metrica lui — o etichetă singură n-ar spune nimic:
