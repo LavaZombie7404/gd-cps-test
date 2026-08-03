@@ -73,7 +73,7 @@
   canvas{display:block; width:100%; height:112px}
 
   .rows{display:flex; flex-direction:column; gap:9px}
-  .row{display:grid; grid-template-columns:64px 1fr 118px; align-items:center; gap:12px}
+  .row{display:grid; grid-template-columns:72px 1fr 118px; align-items:center; gap:12px}
   .row-k{font-size:13px; color:var(--ink-2)}
   .row-bar{height:8px; background:var(--surface-2); border-radius:4px; overflow:hidden}
   .row-bar i{display:block; height:100%; width:0; background:var(--accent); border-radius:4px; transition:width .12s}
@@ -149,7 +149,10 @@
     { id:'w',     label:'W',     code:'KeyW' },
     { id:'space', label:'Space', code:'Space' },
     { id:'up',    label:'↑',     code:'ArrowUp' },
+    { id:'shift', label:'LShift',code:'ShiftLeft' },
+    { id:'ctrl',  label:'LCtrl', code:'ControlLeft' },
   ];
+  const DEFAULT_ENABLED = ['lmb', 'w', 'space', 'up'];
   const DURATIONS = [1, 2, 5, 10, 30, 60, Infinity];
   const LS = 'cpstest.v1';
 
@@ -165,7 +168,7 @@
   // ---- persisted settings ----------------------------------------------
   const saved = (() => { try { return JSON.parse(localStorage.getItem(LS)) || {}; } catch { return {}; } })();
   let duration = DURATIONS.includes(saved.duration) ? saved.duration : (saved.duration === null ? Infinity : 5);
-  let enabled  = new Set(Array.isArray(saved.enabled) && saved.enabled.length ? saved.enabled : INPUTS.map(i => i.id));
+  let enabled  = new Set(Array.isArray(saved.enabled) && saved.enabled.length ? saved.enabled : DEFAULT_ENABLED);
   const bests  = saved.bests && typeof saved.bests === 'object' ? saved.bests : {};
 
   const save = () => {
@@ -235,14 +238,22 @@
   el.pad.addEventListener('contextmenu', e => e.preventDefault());
 
   window.addEventListener('keydown', e => {
-    if (e.repeat || e.ctrlKey || e.altKey || e.metaKey) return;
+    if (e.repeat) return;
+    // Modificatorul propriu al tastei nu se pune la socoteală: keydown-ul lui
+    // LCtrl are el însuși ctrlKey=true.
+    const self = e.code === 'ControlLeft' || e.code === 'ShiftLeft';
+    const mod  = (!self && e.ctrlKey) || e.altKey || e.metaKey;
+
     const inp = INPUTS.find(i => i.code && i.code === e.code);
     if (inp && enabled.has(inp.id)) {
-      e.preventDefault();          // fără scroll pe Space/↑ și fără click pe butonul focusat
+      // Pe un SayoDevice butoanele se suprapun câteva ms, deci apăsarea se
+      // numără chiar dacă un modificator e ținut. Dar nu blocăm default-ul
+      // atunci — Ctrl+R trebuie să rămână refresh.
+      if (!mod) e.preventDefault();   // fără scroll pe Space/↑, fără click pe butonul focusat
       press(inp.id);
       return;
     }
-    if (e.code === 'KeyR' || e.code === 'Escape') { e.preventDefault(); reset(); }
+    if (!mod && (e.code === 'KeyR' || e.code === 'Escape')) { e.preventDefault(); reset(); }
   });
 
   // Ctrl+W / Ctrl+T / Alt+F4 nu pot fi blocate dintr-o pagină web — browserul le
