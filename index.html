@@ -245,6 +245,15 @@
     if (e.code === 'KeyR' || e.code === 'Escape') { e.preventDefault(); reset(); }
   });
 
+  // Ctrl+W / Ctrl+T / Alt+F4 nu pot fi blocate dintr-o pagină web — browserul le
+  // prinde înaintea noastră. Tot ce putem face e să cerem confirmare cât timp
+  // un test chiar e în curs, ca să nu pierzi runda dintr-o apăsare greșită.
+  window.addEventListener('beforeunload', e => {
+    if (phase !== 'running' || !stamps.length) return;
+    e.preventDefault();
+    e.returnValue = '';
+  });
+
   // ---- controls ---------------------------------------------------------
   function buildChips() {
     el.durations.innerHTML = '';
