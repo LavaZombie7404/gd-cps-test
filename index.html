@@ -32,7 +32,10 @@
   h1{margin:0; font-size:22px; letter-spacing:-.01em}
   .sub{margin:4px 0 0; color:var(--ink-2); font-size:13.5px}
 
-  .controls{display:flex; flex-wrap:wrap; gap:18px; margin-bottom:16px}
+  .controls{display:flex; flex-wrap:wrap; gap:18px; margin-bottom:10px}
+  .mode-hint{margin:0 0 14px; color:var(--ink-2); font-size:13px}
+  .mode-hint b{color:var(--ink); font-weight:600}
+  .mode-hint .warn{color:var(--ink); border-bottom:1px dotted var(--ink-3)}
   .group{display:flex; flex-direction:column; gap:7px}
   .group-label{font-size:11px; letter-spacing:.08em; text-transform:uppercase; color:var(--ink-3)}
   .chips{display:flex; flex-wrap:wrap; gap:6px}
@@ -105,7 +108,12 @@
       <span class="group-label">Input-uri</span>
       <div class="chips" id="inputs"></div>
     </div>
+    <div class="group">
+      <span class="group-label">Tehnică</span>
+      <div class="chips" id="modes"></div>
+    </div>
   </div>
+  <p class="mode-hint" id="mode-hint"></p>
 
   <div class="pad" id="pad" data-phase="idle">
     <div class="hero num" id="hero">0.00</div>
@@ -120,6 +128,7 @@
     <div class="tile"><div class="tile-k">Interval mediu</div><div class="tile-v num" id="s-avg">—<small>ms</small></div></div>
     <div class="tile"><div class="tile-k">Cel mai scurt</div><div class="tile-v num" id="s-min">—<small>ms</small></div></div>
     <div class="tile"><div class="tile-k">Jitter σ</div><div class="tile-v num" id="s-jit">—<small>ms</small></div></div>
+    <div class="tile" id="tile-tech"><div class="tile-k" id="s-tech-k">Tehnică</div><div class="tile-v num" id="s-tech">—</div></div>
   </div>
 
   <div class="card">
@@ -153,15 +162,32 @@
     { id:'ctrl',  label:'LCtrl', code:'ControlLeft' },
   ];
   const DEFAULT_ENABLED = ['lmb', 'w', 'space', 'up'];
+
+  // Fiecare tehnică lasă o urmă diferită în ritmul apăsărilor, deci fiecare
+  // primește metrica ei — o etichetă singură n-ar spune nimic.
+  const MODES = [
+    { id:'normal', label:'Normal', stat:null,
+      hint:'Orice input, oricum vrei. Contează doar CPS-ul.' },
+    { id:'jitter', label:'Jitter', stat:'Constanță',
+      hint:'<b>Jitter</b> — un singur buton, brațul încordat. Se măsoară cât de constant rămâi: ' +
+           'viteza vine ușor, ritmul e partea grea.' },
+    { id:'butterfly', label:'Butterfly', stat:'Balans',
+      hint:'<b>Butterfly</b> — două degete pe același buton. Se compară cele două degete între ele: ' +
+           '100% înseamnă că trag la fel, sub 70% înseamnă că unul rămâne în urmă.' },
+    { id:'alternate', label:'Alternate', stat:'Alternanță',
+      hint:'<b>Alternate</b> — comuți între două input-uri. Se măsoară ce procent din apăsări chiar au ' +
+           'schimbat butonul; repetările pe același buton îți strică rata.' },
+  ];
   const DURATIONS = [1, 2, 5, 10, 30, 60, Infinity];
   const LS = 'cpstest.v1';
 
   const $ = id => document.getElementById(id);
   const el = {
     pad:$('pad'), hero:$('hero'), msg:$('msg'), progress:$('progress'),
-    durations:$('durations'), inputs:$('inputs'), breakdown:$('breakdown'),
-    readout:$('readout'), chart:$('chart'),
+    durations:$('durations'), inputs:$('inputs'), modes:$('modes'), breakdown:$('breakdown'),
+    modeHint:$('mode-hint'), readout:$('readout'), chart:$('chart'),
     total:$('s-total'), peak:$('s-peak'), avg:$('s-avg'), min:$('s-min'), jit:$('s-jit'),
+    tileTech:$('tile-tech'), techK:$('s-tech-k'), tech:$('s-tech'),
   };
   const ctx = el.chart.getContext('2d');
 
@@ -169,13 +195,14 @@
   const saved = (() => { try { return JSON.parse(localStorage.getItem(LS)) || {}; } catch { return {}; } })();
   let duration = DURATIONS.includes(saved.duration) ? saved.duration : (saved.duration === null ? Infinity : 5);
   let enabled  = new Set(Array.isArray(saved.enabled) && saved.enabled.length ? saved.enabled : DEFAULT_ENABLED);
+  let mode     = MODES.some(m => m.id === saved.mode) ? saved.mode : 'normal';
   const bests  = saved.bests && typeof saved.bests === 'object' ? saved.bests : {};
 
   const save = () => {
     try {
       localStorage.setItem(LS, JSON.stringify({
         duration: duration === Infinity ? null : duration,
-        enabled: [...enabled], bests,
+        enabled: [...enabled], mode, bests,
       }));
     } catch { /* private mode — nu-i nimic */ }
   };
@@ -188,7 +215,9 @@
   let hoverX = null;
 
   const durKey  = () => duration === Infinity ? 'free' : String(duration);
+  const bestKey = () => mode + ':' + durKey();   // recordurile nu se amestecă între tehnici
   const durText = d => d === Infinity ? '∞' : d + 's';
+  const curMode = () => MODES.find(m => m.id === mode);
 
   function reset(keepDone) {
     phase = 'idle'; t0 = 0; elapsed = 0; stamps = []; peakCps = 0;
@@ -219,7 +248,7 @@
     elapsed = duration * 1000;
     lockUntil = performance.now() + 700;
     const cps = stamps.length / duration;
-    const key = durKey();
+    const key = bestKey();
     if (!bests[key] || cps > bests[key]) { bests[key] = cps; save(); }
     render();
   }
@@ -288,6 +317,15 @@
         save(); reset(); buildChips();
       };
       el.inputs.appendChild(b);
+    }
+    el.modes.innerHTML = '';
+    for (const m of MODES) {
+      const b = document.createElement('button');
+      b.className = 'chip'; b.type = 'button';
+      b.textContent = m.label;
+      b.setAttribute('aria-pressed', String(m.id === mode));
+      b.onclick = () => { mode = m.id; save(); reset(); buildChips(); b.blur(); };
+      el.modes.appendChild(b);
     }
   }
 
@@ -383,7 +421,7 @@
 
     el.hero.textContent = live.toFixed(2);
 
-    const best = bests[durKey()];
+    const best = bests[bestKey()];
     const bestTxt = best ? ' · record <b>' + best.toFixed(2) + '</b> cps' : '';
     if (phase === 'idle') {
       el.msg.innerHTML = 'Apasă <b>' + [...enabled].map(id => INPUTS.find(i => i.id === id).label).join(' / ') +
@@ -414,6 +452,35 @@
     el.avg.innerHTML = mean == null ? '—<small>ms</small>' : mean.toFixed(1) + '<small>ms</small>';
     el.min.innerHTML = gaps.length ? Math.min(...gaps).toFixed(1) + '<small>ms</small>' : '—<small>ms</small>';
     el.jit.innerHTML = sd == null ? '—<small>ms</small>' : sd.toFixed(1) + '<small>ms</small>';
+
+    // metrica de tehnică — fiecare mod se uită la altceva în același șir de apăsări
+    const m = curMode();
+    el.tileTech.style.display = m.stat ? '' : 'none';
+    if (m.stat) {
+      el.techK.textContent = m.stat;
+      let v = null;
+      if (mode === 'jitter' && sd != null && mean > 0) {
+        // coeficient de variație inversat: σ mic față de intervalul mediu = ritm constant
+        v = Math.max(0, 100 - (sd / mean) * 100);
+      } else if (mode === 'butterfly' && gaps.length > 2) {
+        // două degete alternând lasă pauze pare/impare; egale = degete la fel de rapide
+        const ev = gaps.filter((_, i) => i % 2 === 0);
+        const od = gaps.filter((_, i) => i % 2 === 1);
+        const a = ev.reduce((x, y) => x + y, 0) / ev.length;
+        const b = od.reduce((x, y) => x + y, 0) / od.length;
+        if (a > 0 && b > 0) v = 100 * Math.min(a, b) / Math.max(a, b);
+      } else if (mode === 'alternate' && stamps.length > 1) {
+        let sw = 0;
+        for (let i = 1; i < stamps.length; i++) if (stamps[i].id !== stamps[i - 1].id) sw++;
+        v = 100 * sw / (stamps.length - 1);
+      }
+      el.tech.innerHTML = v == null ? '—' : v.toFixed(0) + '<small>%</small>';
+    }
+
+    let hint = m.hint;
+    if (mode === 'alternate' && enabled.size < 2)
+      hint += ' <span class="warn">Ai un singur input activ — aprinde încă unul.</span>';
+    el.modeHint.innerHTML = hint;
 
     // pe input
     el.breakdown.innerHTML = '';
